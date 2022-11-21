@@ -1,9 +1,5 @@
 from django.contrib.auth import get_user_model
 from django.db import models
-from django import forms
-
-from .models import Post
-from core.models import CreatedModel
 
 User = get_user_model()
 
@@ -11,50 +7,47 @@ User = get_user_model()
 class Group(models.Model):
     title = models.CharField(
         max_length=200,
-        verbose_name='Заголовок'
+        verbose_name='Group title',
+        help_text='Название группы',
     )
     slug = models.SlugField(
-        max_length=200,
         unique=True,
-        verbose_name='ЧПУ'
+        verbose_name='Slug',
+        help_text='Слаг Группы',
     )
     description = models.TextField(
-        max_length=400,
-        verbose_name='Описание'
+        verbose_name='Description',
+        help_text='Описание группы',
     )
-
-    class Meta:
-        verbose_name_plural = 'Группы'
-        verbose_name = 'Группу'
 
     def __str__(self):
         return self.title
 
 
-class Post(CreatedModel):
+class Post(models.Model):
     text = models.TextField(
-        max_length=400,
-        help_text='Введите текст поста',
-        verbose_name='Текст поста'
+        verbose_name='Text Post',
+        help_text='Текст поста',
     )
     pub_date = models.DateTimeField(
         auto_now_add=True,
-        verbose_name='Дата публикации'
+        verbose_name='publication of date',
+        help_text='Дата публикации',
     )
     author = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
         related_name='posts',
-        verbose_name='Автор'
+        verbose_name='Author',
+        help_text='Автор',
     )
     group = models.ForeignKey(
         Group,
-        blank=True,
-        null=True,
         on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text='Группа поста',
         related_name='posts',
-        verbose_name='Группа',
-        help_text='Выберите группу'
     )
     image = models.ImageField(
         'Картинка',
@@ -64,37 +57,56 @@ class Post(CreatedModel):
 
     class Meta:
         ordering = ['-pub_date']
-        verbose_name_plural = 'Посты'
         verbose_name = 'Пост'
+        verbose_name_plural = 'Посты'
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.text[:15]
 
 
 class Comment(models.Model):
+    text = models.TextField(
+        verbose_name='Text comment',
+        help_text='Текст комментария',
+    )
     post = models.ForeignKey(
         Post,
         on_delete=models.CASCADE,
-        related_name='comments'
+        related_name='comments',
     )
     author = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name='comments'
-    )
-    text = models.TextField(
-        'Текст',
-        help_text='Текст нового комментария',
-        blank=False
+        related_name='comments',
+        verbose_name='Author',
+        help_text='Автор',
     )
     created = models.DateTimeField(
-        'Дата создания',
-        auto_now_add=True
+        auto_now_add=True,
+        verbose_name='publication of date',
+        help_text='Дата публикации',
     )
 
-
-class PostForm(forms.ModelForm):
     class Meta:
-        model = Post
-        # Добавили поле image в форму
-        fields = ('group', 'text', 'image')
+        ordering = ['-created']
+
+
+class Follow(models.Model):
+    user = models.ForeignKey(
+        User,
+        related_name='follower',
+        on_delete=models.CASCADE,
+    )
+    author = models.ForeignKey(
+        User,
+        related_name='following',
+        on_delete=models.CASCADE,
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                name='user_author_pair_unique',
+                fields=['user', 'author'],
+            ),
+        ]
