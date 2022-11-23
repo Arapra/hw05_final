@@ -1,59 +1,119 @@
-from django.contrib.auth import get_user_model
+import shutil
+import tempfile
+from http import HTTPStatus
+
+from django.conf import settings
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from ..models import Post
+from posts.forms import PostForm
+from posts.models import Group, Post, User
 
-User = get_user_model()
 
-
-class FormTests(TestCase):
+class PostCreateFormTests(TestCase):
     @classmethod
-    def setUpClass(cls) -> None:
+    def setUpClass(cls):
         super().setUpClass()
-        cls.testuser = User.objects.create_user(username="TestUser")
-
-    def setUp(self) -> None:
-        self.authorized_client = Client()
-        self.authorized_client.force_login(
-            self.testuser
-        )
-        self.test_data = {
-            'text': 'Тестовый тектс',
-        }
+        settings.MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
+        cls.guest_client = Client()
+        cls.user = User.objects.create_user(username='auth')
+        cls.authorized_client = Client()
+        cls.authorized_client.force_login(cls.user)
+        cls.group = Group.objects.create(
+            title='Тестовая группа',
+            slug='test-slug',
+            description='Описание группы')
+        cls.group2 = Group.objects.create(
+            title='Тестовая группа2',
+            slug='test-slug2',
+            description='Описание группы2')
+        cls.post = Post.objects.create(
+            text='Тестовая запись',
+            author=cls.user,
+            group=cls.group)
+        cls.form = PostForm()
+        cls.small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x02\x00'
+            b'\x01\x00\x80\x00\x00\x00\x00\x00'
+            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
+            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
+            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
+            b'\x0A\x00\x3B')
         cache.clear()
 
-    def test_form_addnew(self):
-        """
-        При отправке валидной формы со страницы создания поста
-        reverse('posts:create_post') создаётся новая запись в базе данных;
-        """
-        self.authorized_client.post(
-            reverse('posts:post_create'), data=self.test_data
-        )
-        self.assertTrue(Post.objects.filter(**self.test_data).exists())
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(settings.MEDIA_ROOT, ignore_errors=True)
+        super().tearDownClass()
 
-    def test_form_edit(self):
-        """
-        при отправке валидной формы со страницы редактирования
-        поста reverse('posts:post_edit', args=('post_id',))
-        происходит изменение поста с post_id в базе данных.
-        """
-        test_data = {
+    def test_create_post(self):
+        posts_count = Post.objects.count()
+        uploaded = SimpleUploadedFile(
+            name='small.gif',
+            content=self.small_gif,
+            content_type='image/gif')
+        form_data = {
             'text': 'Тестовый текст',
-            'edit_text': 'Текст измененный',
-        }
-        newpost = Post.objects.create(
-            text=test_data['text'],
-            author=self.testuser
-        )
+            'group': self.group.pk,
+            'image': uploaded}
+        response = self.authorized_client.post(
+            reverse('posts:create_post'),
+            data=form_data,
+            follow=True)
+        self.assertRedirects(response, reverse(
+            'posts:profile', kwargs={'username': self.user}))
+        self.assertEqual(Post.objects.count(), posts_count + 1)
+        self.assertTrue(
+            Post.objects.filter(
+                group=self.group,
+                author=self.user,
+                text='Тестовый текст',
+                image='posts/small.gif',
+            ).exists())
+
+    def test_guest_create_post(self):
+        form_data = {
+            'text': 'Тестовый пост от неавторизованного пользователя',
+            'group': self.group.pk}
+        self.guest_client.post(
+            reverse('posts:create_post'),
+            data=form_data,
+            follow=True)
+        self.assertFalse(
+            Post.objects.filter(
+                text='Тестовый пост от неавторизованного пользователя'
+            ).exists())
+        self.assertEqual(Post.objects.count(), 1)
+
+    def test_authorized_edit_post(self):
+        form_data = {
+            'text': 'Тестовый текст',
+            'group': self.group.pk}
         self.authorized_client.post(
-            reverse('posts:post_edit', kwargs={'post_id': newpost.id}),
-            data={
-                'text': test_data['edit_text']
-            }
-        )
-        edit_post = Post.objects.get(pk=newpost.id)
-        self.assertEqual(newpost.id, edit_post.id)
-        self.assertNotEqual(newpost.text, edit_post.text)
+            reverse('posts:create_post'),
+            data=form_data,
+            follow=True)
+        post_edit = Post.objects.get(pk=self.post.pk)
+        self.client.get(f'/posts/{post_edit.pk}/edit/')
+        uploaded = SimpleUploadedFile(
+            name='small_1.gif',
+            content=self.small_gif,
+            content_type='image/gif')
+        form_data = {
+            'text': 'Измененный пост',
+            'group': self.group2.pk,
+            'image': uploaded}
+        response_edit = self.authorized_client.post(
+            reverse('posts:post_edit',
+                    kwargs={
+                        'post_id': post_edit.pk
+                    }),
+            data=form_data,
+            follow=True)
+        post_edit = Post.objects.get(pk=self.post.pk)
+        self.assertEqual(response_edit.status_code, HTTPStatus.OK)
+        self.assertEqual(post_edit.text, 'Измененный пост')
+        self.assertEqual(post_edit.image, 'posts/small_1.gif')
+        self.assertEqual(post_edit.group, self.group2)
