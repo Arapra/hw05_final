@@ -3,6 +3,7 @@ import tempfile
 from http import HTTPStatus
 
 from django.conf import settings
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -31,6 +32,14 @@ class PostCreateFormTests(TestCase):
             text='Тестовая запись',
             author=cls.user,
             group=cls.group)
+        cls.small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x02\x00'
+            b'\x01\x00\x80\x00\x00\x00\x00\x00'
+            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
+            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
+            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
+            b'\x0A\x00\x3B')
+        cache.clear()
 
     @classmethod
     def tearDownClass(cls):
@@ -72,9 +81,9 @@ class PostCreateFormTests(TestCase):
             data=form_data,
             follow=True)
         self.assertFalse(
-            Post.objects.order_by(
+            Post.objects.filter(
                 text='Тестовый пост от неавторизованного пользователя'
-            )[0])
+            ).first())
         self.assertEqual(Post.objects.count(), 1)
 
     def test_authorized_edit_post(self):
