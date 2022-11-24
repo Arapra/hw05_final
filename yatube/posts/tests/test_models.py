@@ -1,9 +1,6 @@
-from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from ..models import Group, Post
-
-User = get_user_model()
+from ..models import Group, Post, User
 
 
 class PostModelTest(TestCase):
@@ -23,11 +20,9 @@ class PostModelTest(TestCase):
 
     def test_models_have_correct_object_names(self):
         """Проверяем, что у моделей корректно работает __str__."""
-        post = PostModelTest.post
-        group = PostModelTest.group
         values = {
-            post.text[:15]: str(post),
-            group.title: str(group),
+            self.post.text[:15]: str(self.post),
+            self.group.title: str(self.group),
         }
         for value, expected in values.items():
             with self.subTest(value=value):
