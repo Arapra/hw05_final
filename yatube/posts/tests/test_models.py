@@ -18,10 +18,17 @@ class PostModelTest(TestCase):
             text='Тестовая пост',
         )
 
-    def test_models_have_correct_object_names(self):
+    def test_post_have_correct_object_names(self):
         """Проверяем, что у моделей корректно работает __str__."""
         values = {
             self.post.text[:15]: str(self.post),
+        }
+        for value, expected in values.items():
+            with self.subTest(value=value):
+                self.assertEqual(value, expected)
+
+    def test_group_have_correct_object_names(self):
+        values = {
             self.group.title: str(self.group),
         }
         for value, expected in values.items():
